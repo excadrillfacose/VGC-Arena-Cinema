@@ -1,4 +1,28 @@
-# Technical Documentation
+# VGC Arena Cinema - Technical Documentation
+
+## Project Overview
+**VGC Arena Cinema** is a specialized tool for recording high-fidelity Pokémon Showdown replays. It uses a "Twin Engine" architecture to capture the Battle and Chat Log effectively as separate video streams, allowing content creators to re-composite them freely.
+
+### Core Tech
+*   **Next.js 15:** Framework & Routing.
+*   **Showdown Replay Parser:** Custom regex-based parser to extract battle logs.
+*   **Twin-Engine Recorder:** Runs two synchronized iframes to render clean battle and chat views.
+*   **FFmpeg WASM:** Client-side video conversion (WebM -> MP4 Remuxing).
+
+### Features
+*   **1080p @ 24fps Recording:** Optimized "Cinema Standard" capture pipeline.
+*   **Twin Engine Output:** Exports a ZIP file containing `battle_replay.mp4` and `chat_log.mp4`.
+*   **Client-Side Conversion:** Remuxes WebM to H.264 MP4 locally for compatibility.
+*   **Smart Filenames:** Automatically names files based on Player Names (e.g., `PlayerA_vs_PlayerB.zip`).
+*   **Privacy:** GDPR Compliant. Zero server-side processing; everything stays on your machine.
+
+### Known Limitations
+*   **Mobile Experimental:** The recorder is heavyweight and optimized for Desktop Chrome/Edge. Mobile devices may overheat or produce low-framerate video.
+*   **Background Throttling:** You **MUST** keep the tab active while recording. Switching tabs will cause modern browsers to throttle the rendering loop, freezing the video.
+
+---
+
+## Technical File Analysis
 
 This document provides a comprehensive technical analysis of every file in the project `vgc-arena-cinema`.
 
@@ -10,12 +34,11 @@ Defines the project metadata, scripts, and dependencies. It serves as the manife
 
 **2) How it does it:**
 - **Scripts:** `dev`, `build`, `start`, `lint` run Next.js and ESLint commands.
-- **Dependencies:** Key dependencies include `next` (v16.1.5), `react` (v19.2.3), `@pkmn/*` packages (for Pokemon logic), `@ffmpeg/*` (for video processing), and `lucide-react` (icons).
-- **DevDependencies:** Includes `typescript`, `eslint`, `tailwindcss` (v4), and types.
+- **Dependencies:** Key dependencies include `next` (v16.1.5), `react` (v19.2.3), `@pkmn/*` packages (for Pokemon logic), `@ffmpeg/ffmpeg` & `@ffmpeg/util` (for client-side video conversion), and `jszip` (for packaging).
 
 **3) Weird Mechanics:**
-- Uses `@tailwindcss/postcss` and `tailwindcss` v4, which is the latest major version and might have different configuration requirements than v3.
-- Includes `@ffmpeg/ffmpeg` and `@ffmpeg/util`, indicating client-side video processing capabilities.
+- Uses `@tailwindcss/postcss` and `tailwindcss` v4.
+- Includes `@ffmpeg/ffmpeg` and `@ffmpeg/util`, enabling the client-side conversion pipeline (WebM -> MP4).
 
 **4) Shared Variables/Functions:**
 - **Scripts:** `npm run dev`, `npm run build` are the primary entry points for developers.
@@ -42,8 +65,8 @@ Configures the TypeScript compiler options for the project.
 Configures Next.js build and runtime behavior.
 
 **2) How it does it:**
-Exports a `nextConfig` object.
 - **Rewrites:** Proxies requests for `.png`, `.jpg` in root (specifically particle/weather effects) and `/sprites/trainers/*` to `https://play.pokemonshowdown.com`.
+- **Build Config:** explicitly disables `typescript` and `eslint` checks during production builds (`ignoreBuildErrors: true`). This ensures deployment on Vercel succeeds even with minor strict-mode type violations.
 
 **3) Weird Mechanics:**
 - **Phase 2 Note:** Contains commented-out `headers` configuration for `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` (COOP/COEP). These are typically required for `SharedArrayBuffer` used by FFmpeg wasm, but they are currently disabled ("Temporarily disabled for Phase 2").
@@ -142,6 +165,7 @@ The main entry point of the VGC Arena Cinema application. It orchestrates the UI
 **3) Weird Mechanics:**
 - **Twin Engine:** It renders TWO `BattleViewer` components (which are iframes) for the *same* content. One is configured for `mode="BATTLE"` and one for `mode="CHAT"`. This is a unique approach to separate the battle visuals from the chat log while keeping them synchronized (since they share the same underlying replay HTML/data logic).
 - **Hardcoded Styles:** heavily relies on Tailwind utility classes for layout (e.g., `flex-grow basis-2/3`).
+- **Global Overlay:** Renders a full-screen "ENCODING VIDEO" overlay when `recorder.isFinishing` is true, blocking user interaction during critical file operations.
 
 **4) Shared Variables/Functions:**
 - **Props:** Passes `ReplayData` and `ReplayController` to child components.
@@ -164,6 +188,14 @@ Global CSS styles.
 
 ## Components (`src/components`)
 
+### `src/components/AppInfo.tsx` (NEW)
+**1) What it does:**
+Renders the "User Manual" at the bottom of the page.
+**2) How it does it:**
+- **Structure:** Split into "Premium Viewer Experience" (Features) and "Studio Recorder" (Instructions).
+- **Content:** Explains critical constraints like "Do Not Switch Tabs" and "Hide Mouse Cursor".
+- **Visuals:** Uses card-based layout with Lucide icons.
+
 ### `src/components/BattleViewer.tsx`
 **1) What it does:**
 A wrapper component that renders the Pokémon Showdown replay format inside an `<iframe>`.
@@ -181,15 +213,16 @@ A wrapper component that renders the Pokémon Showdown replay format inside an `
 **4) Shared Variables/Functions:**
 - Expert default component.
 
-### `src/components/FileDropzone.tsx`
+### `src/components/FileDropzone.tsx` (UPDATED)
 **1) What it does:**
-Provides a drag-and-drop interface for users to upload `.html` replay files.
+Provides a drag-and-drop OR click-to-upload interface for `.html` replay files.
 
 **2) How it does it:**
 - **Event Handling:** Listens for `onDrop` event.
 - **Validation:** Checks for `file.type === 'text/html'` or extension `.html`.
-- **Processing:** Reads file as text (`file.text()`) and calls `parseReplayHtml` from lib.
+- **Processing:** Reads file via `FileReader` and calls `parseReplayHtml` from lib.
 - **Callback:** Calls `onReplayLoaded` with the parsed data.
+- **Native Impl:** Uses native HTML5 Drag & Drop API and a hidden `<input type="file">` element for clicking. Removed `react-dropzone` dependency for lighter footprint.
 
 **3) Weird Mechanics:**
 - Basic HTML5 Drag & Drop API usage.
@@ -213,7 +246,7 @@ Provides the UI buttons (Play, Pause, Reset, Step Back/Fwd, Switch Sides) to con
 **4) Shared Variables/Functions:**
 - None.
 
-### `src/components/RecorderControls.tsx`
+### `src/components/RecorderControls.tsx` (UPDATED)
 **1) What it does:**
 Provides the UI for the "Dual Recorder" feature (Phase 3). Checks for recording status, encoding state, and allows the user to Start/Stop the capture.
 
@@ -233,6 +266,19 @@ Provides the UI for the "Dual Recorder" feature (Phase 3). Checks for recording 
 ---
 
 ## Hooks (`src/hooks`)
+
+### `src/hooks/useVideoConverter.ts` (NEW)
+**1) What it does:**
+Manages the FFmpeg WASM instance for client-side video conversion (WebM -> MP4).
+
+**2) How it does it:**
+- **Lazy Loading:** Loads `@ffmpeg/core` from CDN (`unpkg.com`) only when needed.
+- **Core Logic:** `convertToMp4(blob, filename)`:
+    - Writes the WebM Blob to FFmpeg's virtual filesystem (MEMFS).
+    - Runs `ffmpeg -i input.webm -c copy output.mp4`. This is a **Remux** operation (changing container), which is extremely fast and preserves original quality without re-encoding.
+    - Reads the MP4 file back into a Blob.
+- **Survivor Logic:** Handles false-positive `Aborted()` errors (common in FFmpeg WASM) by checking if the output file exists anyway.
+- **Cleanup:** Rigorously deletes files from MEMFS to prevent memory leaks.
 
 ### `src/hooks/useRecordingGuard.ts`
 **1) What it does:**
@@ -269,17 +315,17 @@ The central nervous system for controlling the iframe "twin engines". It manages
 - `useReplayController`: The hook consumed by `page.tsx`.
 - `CinemaCommand`: Type definition for the cross-window protocol.
 
-### `src/hooks/useDualRecorder.ts`
+### `src/hooks/useDualRecorder.ts` (UPDATED)
 **1) What it does:**
 The Core Engine of Phase 3. It captures the screen, intelligently crops it into two separate video feeds ("Battle" and "Chat"), encodes them simultaneously, and zips them for download.
 
 **2) How it does it:**
-- **Capture:** uses `getDisplayMedia` to capture the current tab.
+- **Capture:** uses `getDisplayMedia` to capture the current tab. Matches constraints `cursor: "never"` to hide mouse.
 - **Twin Canvas System:** created two offscreen canvases.
     - **Battle Canvas:** Crops the left 2/3rds of the screen.
     - **Chat Canvas:** Crops the right 1/3rd.
 - **The "Render Loop" (Optimized):**
-    - **Throttling:** Uses a Delta-Time check to lock rendering to **25 FPS**. This massive optimization prevents Main Thread Starvation.
+    - **Throttling:** Uses a Delta-Time check to lock rendering to **24 FPS** (Cinema Standard). This massive optimization prevents Main Thread Starvation.
     - **Resolution Cap:** If the source is 4K (2160p), it automatically downscales the canvas to 1080p height. This prevents "Encoder Crash" on consumer hardware.
     - **Ref-Based Logic:** Uses `stateRef` instead of React State for the inner loop to avoid closure staleness (fixing the 0-byte video bug).
 - **Encoding:**
@@ -289,6 +335,9 @@ The Core Engine of Phase 3. It captures the screen, intelligently crops it into 
 - **Finalization (The Promise Gate):**
     - When stopping, it triggers `recorder.requestData()` to force a flexible buffer flush.
     - Wraps the `onstop` events of both recorders in a `Promise.all()`. This ensures we wait for the browser to confirm "File Written" before generating the ZIP.
+    - **Clean Stop:** Freezes the render loop *before* updating React state to "Encoding", ensuring the overlay doesn't appear in the video.
+    - **Conversion:** Calls `useVideoConverter` to remux WebM -> MP4 sequentially.
+    - **Zipping:** Packages files as `Player1_vs_Player2_Date.zip`.
 
 **3) Weird Mechanics:**
 - **"Retina" Calculation:** It calculates `video.videoWidth / window.innerWidth` to map DOM Client Rects (CSS pixels) to actual Video Source Pixels.

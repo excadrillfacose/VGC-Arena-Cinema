@@ -7,12 +7,17 @@ import BattleViewer from '@/components/BattleViewer';
 import ReplayControls from '@/components/ReplayControls';
 import RecorderControls from '@/components/RecorderControls';
 import AppInfo from '@/components/AppInfo';
+import WelcomeModal from '@/components/WelcomeModal';
+import InstructionModal from '@/components/InstructionModal';
+import MobileWarning from '@/components/MobileWarning';
 import { ReplayData } from '@/lib/replayParser';
 import { useReplayController } from '@/hooks/useReplayController';
 import { useDualRecorder } from '@/hooks/useDualRecorder';
 
 export default function Home() {
   const [replay, setReplay] = useState<ReplayData | null>(null);
+  const [instructionsAccepted, setInstructionsAccepted] = useState(false);
+
   const controller = useReplayController();
 
   const battleRef = useRef<HTMLDivElement>(null);
@@ -25,8 +30,19 @@ export default function Home() {
     p2: replay?.p2
   });
 
+  const onReplayLoaded = (data: ReplayData) => {
+    setReplay(data);
+    setInstructionsAccepted(false); // Reset for new upload
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center p-4 lg:p-6 bg-slate-950 font-sans">
+    <main className="flex min-h-screen flex-col items-center p-4 lg:p-6 bg-slate-950 font-sans relative">
+
+      {/* STAGE A: WELCOME MODAL (Global) */}
+      <WelcomeModal />
+
+      {/* MOBILE SAFEGUARDS (Global) */}
+      <MobileWarning />
 
       {/* HEADER */}
       <div className="w-full max-w-[95%] mb-4 flex justify-between items-center border-b border-slate-900 pb-2">
@@ -36,7 +52,9 @@ export default function Home() {
           </h1>
           <p className="text-slate-600 text-[10px] tracking-widest uppercase">Twin Engine Studio v0.8</p>
         </div>
-        {replay && (
+
+        {/* Only show Controls if Instructions Accepted */}
+        {replay && instructionsAccepted && (
           <div className="flex items-center gap-4">
             <RecorderControls
               isRecording={recorder.isRecording}
@@ -58,61 +76,69 @@ export default function Home() {
       </div>
 
       {!replay ? (
-        <FileDropzone onReplayLoaded={setReplay} />
+        <FileDropzone onReplayLoaded={onReplayLoaded} />
       ) : (
-        <div className="w-full max-w-[95%] flex flex-col gap-4">
+        <>
+          {/* STAGE B: INSTRUCTION GATEKEEPER */}
+          {!instructionsAccepted && (
+            <InstructionModal onAccept={() => setInstructionsAccepted(true)} />
+          )}
 
-          {/* TWIN ENGINE ROW */}
-          <div className="flex flex-row h-[70vh] w-full gap-4">
+          {/* MAIN CONTENT (Blurred if Gatekeeper Active) */}
+          <div className={`w-full max-w-[95%] flex flex-col gap-4 transition-all duration-500 ${!instructionsAccepted ? 'blur-md pointer-events-none opacity-40' : ''}`}>
 
-            {/* LEFT: BATTLE (66%) */}
-            <div className="flex-grow basis-2/3 flex flex-col gap-2 min-w-0">
-              <div ref={battleRef} className="flex-1 min-h-0 relative">
-                <BattleViewer
-                  data={replay}
-                  mode="BATTLE"
-                  controller={controller}
-                />
-              </div>
-            </div>
+            {/* TWIN ENGINE ROW */}
+            <div className="flex flex-row h-[70vh] w-full gap-4">
 
-            {/* RIGHT: CHAT (33%) */}
-            <div className="flex-grow basis-1/3 flex flex-col gap-2 min-w-0">
-              <div ref={chatRef} className="flex-1 bg-black rounded-lg overflow-hidden border border-slate-800 shadow-xl relative">
-                <div className="absolute top-0 left-0 right-0 bg-slate-900/90 backdrop-blur text-[10px] font-bold text-slate-400 p-2 z-10 border-b border-slate-800 text-center">
-                  BATTLE LOG
-                </div>
-                <div className="pt-8 h-full"> {/* Padding for header */}
+              {/* LEFT: BATTLE (66%) */}
+              <div className="flex-grow basis-2/3 flex flex-col gap-2 min-w-0">
+                <div ref={battleRef} className="flex-1 min-h-0 relative">
                   <BattleViewer
                     data={replay}
-                    mode="CHAT"
+                    mode="BATTLE"
                     controller={controller}
                   />
                 </div>
               </div>
 
-              <div className="h-24 bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col justify-center gap-1 shrink-0">
-                <div className="flex justify-between items-center text-xs border-b border-slate-800 pb-1">
-                  <span className="text-slate-500 font-mono">P1</span>
-                  <span className="text-slate-200 font-bold truncate ml-2">{replay.p1}</span>
+              {/* RIGHT: CHAT (33%) */}
+              <div className="flex-grow basis-1/3 flex flex-col gap-2 min-w-0">
+                <div ref={chatRef} className="flex-1 bg-black rounded-lg overflow-hidden border border-slate-800 shadow-xl relative">
+                  <div className="absolute top-0 left-0 right-0 bg-slate-900/90 backdrop-blur text-[10px] font-bold text-slate-400 p-2 z-10 border-b border-slate-800 text-center">
+                    BATTLE LOG
+                  </div>
+                  <div className="pt-8 h-full"> {/* Padding for header */}
+                    <BattleViewer
+                      data={replay}
+                      mode="CHAT"
+                      controller={controller}
+                    />
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-xs border-b border-slate-800 pb-1 mb-1">
-                  <span className="text-slate-500 font-mono">P2</span>
-                  <span className="text-slate-200 font-bold truncate ml-2">{replay.p2}</span>
-                </div>
-                <div className="text-[10px] text-slate-600 text-center mt-1">
-                  FORMAT: [Gen 9] VGC 2024 Reg G
+
+                <div className="h-24 bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col justify-center gap-1 shrink-0">
+                  <div className="flex justify-between items-center text-xs border-b border-slate-800 pb-1">
+                    <span className="text-slate-500 font-mono">P1</span>
+                    <span className="text-slate-200 font-bold truncate ml-2">{replay.p1}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs border-b border-slate-800 pb-1 mb-1">
+                    <span className="text-slate-500 font-mono">P2</span>
+                    <span className="text-slate-200 font-bold truncate ml-2">{replay.p2}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-600 text-center mt-1">
+                    FORMAT: [Gen 9] VGC 2024 Reg G
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* CONTROLS ROW (Bottom Center) */}
-          <div className="w-full flex justify-center pb-8">
-            <ReplayControls controller={controller} />
-          </div>
+            {/* CONTROLS ROW (Bottom Center) */}
+            <div className="w-full flex justify-center pb-8">
+              <ReplayControls controller={controller} />
+            </div>
 
-        </div>
+          </div>
+        </>
       )}
 
       {/* GLOBAL ENCODING OVERLAY */}

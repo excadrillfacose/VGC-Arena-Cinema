@@ -8,6 +8,8 @@ interface DualRecorderProps {
     battleRef: React.RefObject<HTMLDivElement | null>;
     chatRef: React.RefObject<HTMLDivElement | null>;
     controller: ReplayController;
+    p1?: string;
+    p2?: string;
 }
 
 export const useDualRecorder = ({ battleRef, chatRef, controller }: DualRecorderProps) => {
@@ -129,6 +131,30 @@ export const useDualRecorder = ({ battleRef, chatRef, controller }: DualRecorder
         animationFrameRef.current = requestAnimationFrame(renderFrame);
     }, [battleRef, chatRef]);
 
+    // Nuclear Scroll Lock Helper
+    const toggleScrollLock = (shouldLock: boolean) => {
+        if (typeof document === 'undefined') return;
+
+        const body = document.body;
+        if (shouldLock) {
+            const scrollY = window.scrollY;
+            body.style.top = `-${scrollY}px`;
+            body.style.position = 'fixed';
+            body.style.width = '100%';
+            body.style.height = '100%';
+            body.style.overflow = 'hidden';
+            body.style.touchAction = 'none';
+        } else {
+            const scrollY = body.style.top;
+            body.style.position = '';
+            body.style.width = '';
+            body.style.height = '';
+            body.style.overflow = '';
+            body.style.touchAction = '';
+            window.scrollTo(0, parseInt(scrollY || '0') * -1);
+        }
+    };
+
     const startRecording = async () => {
         try {
             console.log("Starting Dual Recorder (H.264 / 24FPS)...");
@@ -145,6 +171,9 @@ export const useDualRecorder = ({ battleRef, chatRef, controller }: DualRecorder
                 // @ts-ignore
                 preferCurrentTab: true,
             });
+
+            // ACTIVATE NUCLEAR SCROLL LOCK
+            toggleScrollLock(true);
 
             streamRef.current = stream;
 
@@ -249,6 +278,10 @@ export const useDualRecorder = ({ battleRef, chatRef, controller }: DualRecorder
 
         } catch (err) {
             console.error("Failed to start recording", err);
+
+            // UNLOCK SCROLL (if failed)
+            toggleScrollLock(false);
+
             alert("Could not start recording.");
         }
     };
@@ -260,6 +293,9 @@ export const useDualRecorder = ({ battleRef, chatRef, controller }: DualRecorder
         setIsFinishing(true);
         stateRef.current = 'finishing';
         controller.pause();
+
+        // UNLOCK SCROLL
+        toggleScrollLock(false);
 
         // 2. Padding
         await new Promise(resolve => setTimeout(resolve, 2000));

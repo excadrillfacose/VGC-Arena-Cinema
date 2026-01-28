@@ -1,10 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
+    // ignoreBuildErrors: true, 
   },
   /* 
   // Temporarily disabled for Phase 2 (Visual Engine) to allow external CDN loading 
